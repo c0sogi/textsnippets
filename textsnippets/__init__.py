@@ -42,6 +42,11 @@ FileTree = Dict[str, Optional["FileTree"]]
 DEFAULT_GLOB_PATTERNS: Sequence[str] = ("*.py", "*.ipynb", "*.md", "*.txt", "*.rst")
 """Default glob patterns to match files if none are specified."""
 
+DEFAULT_ENCODING: str = "utf-8"
+"""Default encoding for reading files."""
+
+DEFAULT_NOTEBOOK_CONTENT: Sequence[NotebookContent] = ("code",)
+
 
 class TextSnippets(NamedTuple):
     """
@@ -64,7 +69,8 @@ class TextSnippets(NamedTuple):
         ban_file_patterns: Optional[Sequence[str]] = None,
         parse_ipynb_cells: Union[
             NotebookContent, Sequence[NotebookContent]
-        ] = "code",  # "code", "markdown", or ["code", "markdown"]
+        ] = DEFAULT_NOTEBOOK_CONTENT,  # "code", "markdown", or ["code", "markdown"]
+        encoding: str = DEFAULT_ENCODING,
     ):
         """
         Creates a CodeSnippets instance from a file path, directory, or package name.
@@ -98,7 +104,8 @@ class TextSnippets(NamedTuple):
                 )
             ),
             snippets_text="".join(
-                _create_formatted_snippet(file_path=p, ipynb_cells_to_include=parse_ipynb_cells) for p in found_paths
+                _create_formatted_snippet(file_path=p, ipynb_cells_to_include=parse_ipynb_cells, encoding=encoding)
+                for p in found_paths
             ),
             base_dir=_get_base_dir(found_paths),
         )
@@ -210,7 +217,7 @@ def _is_path_relative_to(path: Path, other: Path) -> bool:
             return False
 
 
-def _parse_ipynb_content(file_path: Path, cells_to_include: Sequence[NotebookContent]) -> str:
+def _parse_ipynb_content(file_path: Path, cells_to_include: Sequence[NotebookContent], encoding: str) -> str:
     """
     Parses an .ipynb file and extracts content from specified cell types.
 
@@ -223,7 +230,7 @@ def _parse_ipynb_content(file_path: Path, cells_to_include: Sequence[NotebookCon
         Returns an error message string if parsing fails.
     """
     try:
-        with file_path.open("r", encoding="utf-8") as f:
+        with file_path.open("r", encoding=encoding) as f:
             notebook_content = json.load(f)
     except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
         return f"[Error reading or parsing IPYNB file {file_path.name}: {e}]"
@@ -245,7 +252,9 @@ def _parse_ipynb_content(file_path: Path, cells_to_include: Sequence[NotebookCon
     return "\n\n".join(extracted_parts)
 
 
-def _extract_content_from_file(file_path: Path, ipynb_cells_to_include: Sequence[NotebookContent] = ("code",)) -> str:
+def _extract_content_from_file(
+    file_path: Path, ipynb_cells_to_include: Sequence[NotebookContent], encoding: str
+) -> str:
     """
     Extracts content from a file, with special handling for .ipynb files.
 
@@ -263,10 +272,10 @@ def _extract_content_from_file(file_path: Path, ipynb_cells_to_include: Sequence
         file_suffix = file_path.suffix.lower()
 
         if file_suffix == ".ipynb":
-            return _parse_ipynb_content(file_path, ipynb_cells_to_include)
+            return _parse_ipynb_content(file_path=file_path, cells_to_include=ipynb_cells_to_include, encoding=encoding)
         else:
             # For .py, .txt, .md, .rst, etc., read as plain text
-            return file_path.read_text(encoding="utf-8")
+            return file_path.read_text(encoding=encoding)
 
     except Exception as e:
         # Broad except to catch any unexpected errors during file processing
@@ -274,12 +283,14 @@ def _extract_content_from_file(file_path: Path, ipynb_cells_to_include: Sequence
         return f"[Error processing file {file_path.name}: {e}]"
 
 
-def _create_formatted_snippet(file_path: Path, ipynb_cells_to_include: Sequence[NotebookContent]) -> str:
+def _create_formatted_snippet(file_path: Path, ipynb_cells_to_include: Sequence[NotebookContent], encoding: str) -> str:
     """
     Reads a file, extracts its content based on type, and formats it
     with a path header.
     """
-    extracted_content = _extract_content_from_file(file_path, ipynb_cells_to_include)
+    extracted_content = _extract_content_from_file(
+        file_path=file_path, ipynb_cells_to_include=ipynb_cells_to_include, encoding=encoding
+    )
 
     # Determine the display path (relative to site-packages, cwd, or absolute)
     display_path_obj: Path
